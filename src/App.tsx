@@ -213,11 +213,14 @@ export default function App() {
           triggerToast('Бұлттық база жаңадан дайындалды! Алғашқы мәліметтер толтырылуда...');
         }
         // Upload current state to seed cloud
-        await saveCollectionToFirestore('orders', orders);
+        // МАҢЫЗДЫ: employees/measurements БҰРЫН сақталуы керек, себебі orders
+        // кестесі оларға foreign key арқылы сілтеме жасайды (orders_employeeId_fkey,
+        // orders_measurementId_fkey) — әйтпесе "Key is not present" қатесі шығады.
         await saveCollectionToFirestore('clients', clients);
         await saveCollectionToFirestore('inventory', inventory);
         await saveCollectionToFirestore('employees', employees);
         await saveCollectionToFirestore('measurements', measurements);
+        await saveCollectionToFirestore('orders', orders);
         setSyncStatus('success');
         return;
       }
@@ -246,11 +249,12 @@ export default function App() {
   const pushLocalToCloud = async () => {
     setSyncStatus('syncing');
     try {
-      await saveCollectionToFirestore('orders', orders);
+      // employees/measurements БҰРЫН — orders соларға FK арқылы сілтеме жасайды
       await saveCollectionToFirestore('clients', clients);
       await saveCollectionToFirestore('inventory', inventory);
       await saveCollectionToFirestore('employees', employees);
       await saveCollectionToFirestore('measurements', measurements);
+      await saveCollectionToFirestore('orders', orders);
       setSyncStatus('success');
       triggerToast('Жергілікті деректер бұлттық базаға толық сақталды! ☁️🚀');
     } catch (error) {
