@@ -1,0 +1,6 @@
+{
+  "name": "JUMA UI - Мебель CRM Pro",
+  "description": "Жиһаз өндірісіне арналған заманауи және интерактивті CRM жүйесі - Тапсырыстар, Клиенттер, Қойма және 3D модельдеу",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
