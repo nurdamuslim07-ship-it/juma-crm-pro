@@ -1,0 +1,93 @@
+name: juma_ui_crm
+description: "JUMA UI Furniture CRM — Kazakh-first furniture factory management system."
+publish_to: 'none'
+
+version: 1.0.1+2
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # State management / DI (plain Provider/Notifier syntax — no codegen)
+  flutter_riverpod: ^2.6.1
+
+  # Routing
+  go_router: ^14.6.2
+
+  # Backend
+  supabase_flutter: ^2.8.3
+  http: ^1.6.0
+
+  # Functional error handling (Either<Failure, T> in repositories)
+  fpdart: ^1.1.1
+
+  # Env config
+  flutter_dotenv: ^5.2.1
+
+  # Local persistence (theme/locale prefs, remembered device)
+  shared_preferences: ^2.3.4
+
+  # Typography & icons matching the existing web design system
+  google_fonts: ^6.2.1
+  lucide_icons: ^0.257.0
+
+  # Formatting: kk-KZ currency/date, phone masks
+  intl: ^0.20.2
+
+  # Call / WhatsApp deep links from client & order detail screens
+  url_launcher: ^6.3.1
+
+  # Payment receipt attachment (requirement #8)
+  image_picker: ^1.1.2
+
+  # Partner price-list/document attachment (requirement #13) — unlike
+  # payment receipts (always a photo), a supplier price list is
+  # commonly a PDF/Excel file, so image_picker's camera/gallery-only
+  # scope doesn't cover it.
+  file_picker: ^8.1.6
+
+  # Analytics module charts (order-status/payment-method breakdowns,
+  # revenue trend) — tablet/web only, per the requirement's "телефонда
+  # карточкалар, планшет/web-те grid және chart" split.
+  fl_chart: ^0.69.2
+
+  # Production module — "QR код арқылы тапсырысты ашу": generate a QR
+  # encoding the order id (printed on the work order) and scan it on
+  # the shop floor to jump straight to that order's production detail.
+  qr_flutter: ^4.1.0
+  # 7.x migrated the iOS/macOS backend from Google MLKit to Apple's
+  # native Vision API — MLKit's vendored binaries had no arm64 iOS
+  # Simulator slice (only arm64-device + x86_64-simulator), which made
+  # it impossible to build for a native Apple Silicon Simulator at all.
+  # Vision is a system framework, so this dependency is gone entirely.
+  mobile_scanner: ^7.2.0
+
+  cupertino_icons: ^1.0.8
+  pdf: ^3.12.0
+  printing: ^5.14.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+  # Fakes UrlLauncherPlatform.instance in launchers_test.dart, so the
+  # AppLaunchers bool-return fix can be verified without a real
+  # device/browser.
+  url_launcher_platform_interface: ^2.3.2
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - .env
+    - assets/images/living-room.jpg
+    - assets/fonts/NotoSans-Regular.ttf
+    - assets/fonts/OFL.txt
+  # Inter is loaded at runtime via the google_fonts package (see
+  # core/theme/app_typography.dart) — no bundled font asset files needed.

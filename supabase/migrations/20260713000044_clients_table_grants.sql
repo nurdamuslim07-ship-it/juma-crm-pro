@@ -1,0 +1,21 @@
+-- Minimal unblock for the Clients module, same defect family as
+-- 20260713000043 (the schema-wide missing-authenticated-grants
+-- issue, deliberately postponed in full — see that migration's own
+-- header comment). Scoped to exactly one table.
+--
+-- clients_insert/_select/_update/_soft_delete_director's RLS
+-- policies and the owner role's role_permissions (clients.read,
+-- clients.write) are all already correctly configured — verified
+-- read-only before writing this migration. The failure is purely the
+-- missing base grant: `authenticated` has never held SELECT/INSERT/
+-- UPDATE/DELETE on `clients`, so Postgres rejects every request with
+-- `42501 permission denied` before RLS is ever evaluated, regardless
+-- of role/permission correctness.
+--
+-- Matches exactly what `clients`' own existing RLS policies already
+-- declare (SELECT/INSERT/UPDATE/DELETE all have policies — DELETE is
+-- director-only via clients_soft_delete_director, but the app itself
+-- only ever soft-deletes via UPDATE; the grant still needs to exist
+-- for that policy to be reachable at all, same reasoning as every
+-- other grant in this family of fixes).
+grant select, insert, update, delete on clients to authenticated;

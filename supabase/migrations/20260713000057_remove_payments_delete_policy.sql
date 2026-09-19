@@ -1,0 +1,16 @@
+-- Fixes the remaining High-severity finding from uat_db_security_audit.md
+-- §11: `payments` has a director-permitted hard-DELETE RLS policy
+-- (`payments_delete_director`) that contradicts CLAUDE.md's and
+-- DATABASE_SCHEMA.md's explicit "insert-only / reversal-not-delete"
+-- rule for financial history. The correct, already-designed mechanism
+-- for correcting a payment is `reverse_payment()` (inserts a new
+-- `status = 'reversed'` row referencing the original via
+-- `reversal_of` — the original row is never touched or removed), and
+-- `prevent_payment_tamper()` (a BEFORE UPDATE trigger) already blocks
+-- amount/order/client/status edits. The DELETE policy was the one
+-- remaining way to permanently destroy a payment history row, bypassing
+-- both of those safeguards entirely — this migration removes exactly
+-- that gap, restoring the invariant the rest of the schema already
+-- enforces everywhere else. No other payments policy (SELECT/INSERT/
+-- UPDATE) is touched.
+drop policy if exists "payments_delete_director" on payments;

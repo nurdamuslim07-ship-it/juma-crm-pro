@@ -1,0 +1,35 @@
+name: Publish JUMA Flutter web
+on:
+  push:
+    branches: [main]
+    paths: ['flutter_app/**', '.github/workflows/flutter-pages.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.7'
+          channel: stable
+          cache: true
+      - run: cp web-public.env .env && flutter pub get && flutter build web --release --base-href /juma-crm-pro/ --dart-define=LOCAL_DEVELOPMENT_ACCESS=false
+        working-directory: flutter_app
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: flutter_app/build/web
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

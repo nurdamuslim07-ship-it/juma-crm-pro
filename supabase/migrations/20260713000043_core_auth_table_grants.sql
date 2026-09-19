@@ -1,0 +1,44 @@
+-- Minimal unblock for the app's core auth/profile-load path.
+--
+-- Root cause (proven via a real authenticated PostgREST request, not
+-- just `supabase db query`): `authenticated` has never held a
+-- baseline SELECT grant on any table in this schema, because every
+-- migration in this project runs as the `postgres` role, and this
+-- project's `pg_default_acl` only auto-grants `SELECT/INSERT/UPDATE/
+-- DELETE` to `authenticated` for tables created by `supabase_admin`
+-- — `postgres`-created tables get only `TRUNCATE/REFERENCES/TRIGGER/
+-- MAINTAIN` by default, never SELECT. This is the same schema-wide
+-- defect identified earlier and deliberately postponed (see
+-- 20260713000042's own header comment) — this migration does NOT
+-- fix it broadly. It grants SELECT on exactly the four tables
+-- `AuthRemoteDataSource._loadProfile()` reads (directly or via a
+-- PostgREST FK-embed, which requires its own independent grant) on
+-- every app load and every sign-in:
+--
+--   - profiles    -> `.from('profiles').select('*, companies(is_active)')`
+--   - companies   -> embedded in the same select (FK companies(is_active))
+--   - user_roles  -> `.from('user_roles').select('roles(key)')`
+--   - roles       -> embedded in that same select (FK roles(key)) —
+--                    confirmed via has_table_privilege() to ALSO be
+--                    missing, contrary to an earlier assumption in
+--                    this session that it already had a grant; adding
+--                    it here after that assumption was checked and
+--                    disproved, not assumed a second time.
+--
+-- Without this, `_loadProfile()` throws `42501 permission denied`
+-- on every call, `authStateProvider` never resolves a user,
+-- `currentUserProvider` reads null, and the router's redirect guard
+-- sends every signed-in user to /onboarding regardless of their real
+-- profiles.company_id — including users who already have an active
+-- company. This is not a router/onboarding logic bug; the logic is
+-- correct given the input it receives. The input itself is wrong
+-- because the read that produces it cannot execute at all.
+--
+-- Deliberately NOT included: any other table, any INSERT/UPDATE/
+-- DELETE grant, `permissions` (not read by _loadProfile()), and no
+-- change to company_memberships, Step 1, or Step 2 of the
+-- multi-company architecture.
+grant select on profiles to authenticated;
+grant select on companies to authenticated;
+grant select on user_roles to authenticated;
+grant select on roles to authenticated;

@@ -1,0 +1,96 @@
+-- Fixes the root cause behind every "missing grant" bug patched
+-- piecemeal this session (20260713000043/44/46/47/49 and others):
+-- every table/view in this schema was created by the `postgres`
+-- role. Postgres's per-role default ACL (`pg_default_acl`) for
+-- `postgres` in schema `public` grants `authenticated`/`anon`/
+-- `service_role` only `Dxtm` (TRUNCATE/REFERENCES/TRIGGER/MAINTAIN)
+-- on new relations — never SELECT/INSERT/UPDATE/DELETE. Objects
+-- created by `supabase_admin` get the correct full grant
+-- automatically (confirmed via pg_default_acl), which is exactly why
+-- this defect never affected anything Supabase's own tooling creates
+-- — only this project's own migrations, which all run as `postgres`.
+--
+-- A full audit (uat_db_security_audit.md) found 59 of 71 tables and
+-- all 3 views still missing at least one baseline grant `authenticated`
+-- needs to reach its own already-correct RLS policies, plus 68 of 71
+-- tables missing grants for `service_role`. Every fix so far has been
+-- a one-off GRANT statement on an individual table — the underlying
+-- default ACL was never touched, so every future table created by
+-- `postgres` (i.e. every future migration in this project) would
+-- reproduce the exact same bug again.
+--
+-- This migration fixes it at the root, permanently, in two parts:
+--
+--   1. `ALTER DEFAULT PRIVILEGES FOR ROLE postgres` — changes what
+--      grant *future* tables/views get automatically the moment
+--      they're created, mirroring supabase_admin's own convention
+--      (broad table-level grant, rely on RLS as the actual security
+--      boundary — RLS is confirmed enabled with complete, correctly
+--      company-scoped policies on all 71 tables per the audit, so a
+--      broad grant is safe: any table with no matching RLS policy for
+--      a given command simply denies it regardless of the table-level
+--      grant, which is the standard, textbook-correct Postgres RLS
+--      architecture). This removes the need for any future per-table
+--      grant patch — new tables/views inherit the correct grant
+--      automatically, exactly like supabase_admin-owned objects
+--      already do.
+--
+--      `anon` is deliberately NOT included here — the audit confirmed
+--      anon correctly has zero privileges on every table today, and
+--      this app has no unauthenticated read/write surface, so anon's
+--      current zero-access state is correct and is left untouched.
+--
+--   2. A one-time catch-up `GRANT ... ON ALL TABLES IN SCHEMA public`
+--      for `authenticated` and `service_role` — `ALTER DEFAULT
+--      PRIVILEGES` only affects objects created *after* it runs, not
+--      retroactively, so the 59 tables + 3 views (all `security_invoker`
+--      views, confirmed by reloptions) already missing grants for
+--      authenticated, and the 68 tables missing grants for
+--      service_role, still need this one-time sweep. `TRUNCATE` is
+--      deliberately excluded — no app role should ever truncate a
+--      whole table; the `Dxtm` bits granted by the original defective
+--      default ACL already cover REFERENCES/TRIGGER/MAINTAIN
+--      harmlessly.
+--
+-- `idempotency_keys` is included in this blanket grant even though
+-- its own RLS policy is `qual = false, with_check = false` (RPC-only
+-- access, by design) — the blanket grant does not weaken this at all,
+-- since RLS still denies every direct row regardless of the
+-- table-level grant. Documented here so a future reader isn't
+-- surprised that this table "has grants now" — it remains
+-- unreachable directly, exactly as designed.
+alter default privileges for role postgres in schema public
+  grant select, insert, update, delete on tables to authenticated;
+
+alter default privileges for role postgres in schema public
+  grant select, insert, update, delete on tables to service_role;
+
+grant select, insert, update, delete on all tables in schema public to authenticated;
+grant select, insert, update, delete on all tables in schema public to service_role;
+
+-- This single blanket grant is also the complete, deliberate fix for
+-- a separate reported bug: `dashboard_summary()` failing with
+-- "permission denied for view active_payments". Three fix shapes
+-- were considered for that specific bug:
+--   (a) make `dashboard_summary()` SECURITY DEFINER;
+--   (b) GRANT SELECT on the view directly;
+--   (c) a bigger architecture change (e.g. materializing the view).
+-- (b) was chosen — it's exactly what this migration already does for
+-- every view via "ALL TABLES IN SCHEMA" (Postgres's GRANT ... ON ALL
+-- TABLES IN SCHEMA includes views). (a) was rejected: `dashboard_summary`
+-- is plain SQL, SECURITY INVOKER (not marked SECURITY DEFINER), and
+-- relies on each underlying table's own RLS to scope results to the
+-- caller's company — this is safe and correct today because `orders`,
+-- `expenses`, `materials`/`inventory_balances`, `deliveries`, `tasks`
+-- all already have correctly company-scoped SELECT policies (per the
+-- audit's RLS-completeness check), and `active_payments` itself is
+-- created with `security_invoker = true` (confirmed via
+-- pg_class.reloptions) — the safest of Postgres's view modes, since
+-- both the underlying table's grants *and* its RLS are evaluated as
+-- the actual calling user, never the view owner. Making the function
+-- SECURITY DEFINER would be a strictly larger change to its security
+-- model than necessary to fix the reported bug, and would not be
+-- "more correct" than what a plain grant already achieves — the
+-- missing grant was the entire defect. (c) was rejected as unrelated
+-- scope creep — nothing about this bug indicates the view itself
+-- needs restructuring.

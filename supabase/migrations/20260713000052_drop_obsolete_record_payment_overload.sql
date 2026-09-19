@@ -1,0 +1,40 @@
+-- Removes the stale, insecure 9-argument record_payment() overload
+-- confirmed still live in production (uat_db_security_audit.md §5a).
+--
+-- History: 20260713000016 created record_payment(9 args, no
+-- p_paid_at). 20260713000027 (the multi-tenant conversion) added a
+-- 10th parameter (p_paid_at date) to company-scope the function
+-- correctly — but `create or replace function` only replaces a
+-- function with an IDENTICAL signature; adding a parameter creates a
+-- brand new overload instead of replacing the old one. No migration
+-- ever issued `drop function` for the original 9-arg signature, so it
+-- has been sitting in production, callable, ever since.
+--
+-- Confirmed via pg_get_functiondef that the 9-arg version predates
+-- multi-tenancy entirely: it declares no v_company_id, never derives
+-- auth_company_id(), and its idempotency-key lookup
+-- (`select * from idempotency_keys where key = p_idempotency_key`,
+-- full stop) is not scoped by company_id at all. If two different
+-- companies' clients ever produced the same idempotency-key value,
+-- this branch would return another company's cached payment JSON
+-- verbatim — a real, if narrow, cross-tenant read leak. Its final
+-- `insert into payments (...)` also omits `company_id`, which is
+-- `not null` with no default, so no actual cross-tenant *row* could
+-- ever be created this way — but the idempotency-lookup leak above
+-- doesn't depend on reaching that insert at all.
+--
+-- The Flutter app was confirmed (by reading
+-- payment_remote_datasource.dart) to already always pass p_paid_at
+-- explicitly on every call, meaning it has only ever invoked the
+-- correct 10-arg version — dropping the 9-arg overload changes
+-- nothing about how the app calls this function.
+--
+-- Only the 10-arg version (from 20260713000027) remains after this
+-- migration — it already correctly derives v_company_id from
+-- auth_company_id(), scopes the idempotency-key lookup by
+-- company_id, validates p_order_id/p_client_id against the caller's
+-- own company, and is the version every payment-history/balance/
+-- receipt code path already reads from.
+drop function if exists record_payment(
+  text, uuid, uuid, bigint, uuid, uuid, uuid, text, timestamptz
+);

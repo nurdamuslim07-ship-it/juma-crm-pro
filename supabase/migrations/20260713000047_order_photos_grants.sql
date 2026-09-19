@@ -1,0 +1,13 @@
+-- Same defect family as 20260713000043/44/46 (schema-wide missing
+-- baseline `authenticated`/`service_role` grants — every table in
+-- this project was created by the `postgres` role, which gets a
+-- weaker pg_default_acl entry than `supabase_admin`). Found while
+-- fixing the production-readiness audit's confirmed critical bug:
+-- `addPhoto()` (production photo upload) never included company_id
+-- and would fail on the NOT NULL constraint even once that was
+-- fixed, because `authenticated` also cannot SELECT/INSERT on
+-- `order_photos` at all. `order_photos_write`/`order_photos_select`
+-- RLS policies already correctly declare ALL/SELECT for authenticated
+-- users with production.write — this migration only makes those
+-- reachable, matching exactly what the policies already declare.
+grant select, insert, update, delete on order_photos to authenticated;
